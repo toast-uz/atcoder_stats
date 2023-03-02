@@ -11,7 +11,7 @@ import re
 
 FILENAME_SUBMISSIONS = '../in/submissions.csv.gz'
 
-class SubmitData:
+class Submits:
     def __init__(self, df=None):
         if df is None:
             print(f'Waite a minute for loading {FILENAME_SUBMISSIONS} ...', flush=True, end='')
@@ -20,18 +20,26 @@ class SubmitData:
         else:
             self.df = df
 
+    def clone(self):
+        return Submits(self.df.copy())
+
     def print(self):
         print(self.df)
 
     # 特定の列でフィルタする（func f がTrueで抽出）
     def filter(self, column, f):
-        return SubmitData(self.df[self.df[column].apply(f)])
+        return Submits(self.df[self.df[column].apply(f)])
+
+    # 名寄せする
+    def transform(self, column, transform=lambda x: x):
+        tmp = self.clone()
+        tmp.df[column] = tmp.df[column].apply(transform)
+        return tmp
 
     # 特定の列をカウントする、名寄せ変換オプション、多い純からソートされる
     # 返り値は1列のdf（行ラベルがcolumn指定したもの）であるが、ratioありなら比率の列もつく
-    def count(self, column, *, transform=lambda x: x, ratio=False, ascending=False):
-        tmp = pd.DataFrame(pd.DataFrame(self.df[column].apply(transform))
-                           .groupby(column).size().sort_values(ascending=ascending),
+    def count(self, column, *, ratio=False, ascending=False):
+        tmp = pd.DataFrame(self.df.groupby(column).size().sort_values(ascending=ascending),
                            columns=['count'])
         if ratio:
             tmp['ratio'] = tmp['count'] / tmp['count'].sum()
@@ -80,7 +88,7 @@ class SubmitData:
 # 言語名の名寄せ
 # 空白の前、かつ末尾の数値は取る
 
-class Transform:
+class Transforms:
     def __init__(self):
         # 言語名の名寄せ
         pattern = '^[A-Za-z\+\#]+'
