@@ -1,12 +1,36 @@
 import pandas as pd
-from lib import Submits, Transforms
+from lib import Submits, Contests, Transforms
 
 DIRNAME = '../out/atcoder_stats/users_submits/'
 ID_COLUMN_LANG_BEGIN = 3
 
-def create_users_submits(submits, filename, *, transform=lambda x: x, ):
+# 提出結果を抽出して保存する
+#   contests_filter: コンテスト種別やratedかなどでフィルタ
+#   realtime: コンテスト時間内の提出かでフィルタ
+#   result: ACなどの結果でフィルタ
+def create_users_submits(submits, filename, *, contests_filter=None, realtime=None, result=None):
     print(f'Creating users_submits/{filename} ...', flush=True, end='')
-    df = submits.filter('contest_id', lambda x: transform(x) != '').df
+    df = submits.df
+    contests = Contests().filter(**contests_filter)
+    if contests_filter is not None:
+        df = df[df['contest_id'].isin(contests.index.to_list())]
+    if result is not None:
+        df = df[df['result'] == result]
+    if realtime is not None:
+        df_list = []
+        for contest_id, detail in contests.df.iterrows():
+            print(f'Filtering realtime={realtime} submit for {contest_id} ...')
+            if realtime:
+                df_list.append(df[df['contest_id' == contest_id]
+                                * df['epoch_second' >= detail['start_epoch_second']
+                                * df['epoch_second' <= detail['start_epoch_second']
+                                    + detail['duration_second']]]])
+            else:
+                df_list.append(df[df['contest_id' == contest_id]
+                                * df['epoch_second' < detail['start_epoch_second']
+                                * df['epoch_second' > detail['start_epoch_second']
+                                    + detail['duration_second']]]])
+        df = pd.concat(df_list)
     lang = pd.crosstab(df['user_id'], df['language'])
     submits =  pd.DataFrame(lang.sum(axis=1), columns=['submits'])
     epoch_grouped = df[['user_id', 'epoch_second']].groupby('user_id')
@@ -18,27 +42,20 @@ def create_users_submits(submits, filename, *, transform=lambda x: x, ):
     res.to_csv(DIRNAME + filename)
     print('done')
 
+# 言語リストのみ抽出
+def languages(df):
+    return df.drop(df.columns[[n for n in range(ID_COLUMN_LANG_BEGIN)]], axis=1)
+
+# 言語ランキングの求め方
+# languages_rank = users_submits.languages(df).sum(axis=0).sort_values(ascending=False)
+
 def main():
     # ユーザでグルーピングしてepoch_timeの最大最小、languageのカウントをとる
     transform_language = Transforms().language
     submits = Submits().transform('language', transform_language)
     create_users_submits(submits, 'all.csv')
-    create_users_submits(submits, 'axc.csv', transform=Transforms().axc)
-    create_users_submits(submits, 'abrgc.csv', transform=Transforms().abrgc)
-    create_users_submits(submits, 'ahc.csv', transform=Transforms().ahc)
+    create_users_submits(submits, 'algorithm.csv', contests_filter={'type_': 'Algorithm'})
+    create_users_submits(submits, 'heuristic.csv', contests_filter={'type_': 'Heuristic'})
 
 if __name__=='__main__':
     main()
-
-
-# 2021年度に活動開始したユーザについて、
-# 参加期間（列）とPython率（行）とのクロス集計（行方向に正規化）をしてヒートマップを作成する
-
-# 2021年度に活動開始したユーザについて、
-# 参加期間（列）とC++率（行）とのクロス集計（行方向に正規化）をしてヒートマップを作成する
-
-# 2020年度に活動開始したユーザについて、
-# 参加期間（列）とPython率（行）とのクロス集計（行方向に正規化）をしてヒートマップを作成する
-
-# 2020年度に活動開始したユーザについて、
-# 参加期間（列）とPython率（行）とのクロス集計（行方向に正規化）をしてヒートマップを作成する
