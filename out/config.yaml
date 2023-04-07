@@ -1,0 +1,111 @@
+test: 1
+
+logging:
+  version: 1
+  formatters:
+    simple:
+      format: '%(asctime)s:%(name)s:%(levelname)s:%(message)s'
+  handlers:
+    console:
+      class: logging.StreamHandler
+      level: INFO
+      formatter: simple
+      stream: ext://sys.stdout
+    file:
+      class: logging.FileHandler
+      level: ERROR
+      filename: '../out/messages.log'
+      formatter: simple
+  loggers:
+    exampleLogger:
+      level: DEBUG
+      handlers: [console, file]
+      propagate: no
+  root:
+    level: DEBUG
+    handlers: [console]
+
+database:
+  submissions:
+    filename: ../out/submissions.csv
+    fetch:
+      url: https://kenkoooo.com/atcoder/atcoder-api/v3/from/{}
+      cache: ../in/submissions/{}.json
+    uniqueness:
+      column: id
+      break_if_duplicated: False
+    pre_processing:
+      fetch:
+        url: https://s3-ap-northeast-1.amazonaws.com/kenkoooo/submissions.csv.gz
+        cache: ../in/submissions.csv.gz
+    post_processing:
+    dependencies:
+      - self: now_epoch_second
+        other_key: submissions
+        other_value: fetch_epoch_second
+        op: lt
+        self_gap: -300
+        type: soft
+      - self: base_file_last_epoch
+        other_key: submissions
+        other_value: base_file_last_epoch_previous
+        op: eq
+        type: hard
+  contests:
+    filename: ../out/contests.csv
+    fetch:
+      url: https://atcoder.jp/contests/archive?page={}
+      cache:
+    uniqueness:
+      column: contest_id
+      break_if_duplicated: True
+    post_processing:
+      fetch:
+        url: https://kenkoooo.com/atcoder/resources/contests.json
+        cache: ../in/contests.json
+    dependencies:
+      - self: contest_ids
+        other_key: submissions
+        other_value: recently_contest_ids
+        op: set_ge
+        type: soft
+  results:
+    filename: ../out/results.csv
+    fetch:
+      url: https://atcoder.jp/contests/{}/results/json
+      cache: ../in/results/{}.json
+    post_processing:
+    dependencies:
+      - self: contest_ids
+        other_key: contests
+        other_value: recently_rated_contest_ids
+        op: set_ge
+        type: soft
+  problem_models:
+    filename: ../out/problem_models.csv
+    fetch:
+      url: https://kenkoooo.com/atcoder/resources/problem-models.json
+      cache:
+    dependencies:
+      - self: contest_ids
+        other_key: contests
+        other_value: recently_rated_algo_contest_ids
+        op: set_ge
+        type: hard
+
+updated:
+  filename: '../out/updated.yaml'
+  init:
+    submissions:
+      recently_contest_ids:
+      fetch_epoch_second:
+      base_file_last_epoch:
+      base_file_last_epoch_previous:
+    contests:
+      recently_rated_contest_ids:
+      recently_rated_algo_contest_ids:
+      contest_ids: virtual
+    results:
+      contest_ids: virtual
+    problem_models:
+      contest_ids: virtual

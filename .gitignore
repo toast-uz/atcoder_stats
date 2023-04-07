@@ -1,4 +1,11 @@
-in/
-out/
+in/results/*.json
+in/submissions/*.json
+in/*.json
+in/*.gz
+out/*.csv
+out/*.log
+out/*.json
+out/updated.yaml
 .venv/
+src/old/**
 *cache*
