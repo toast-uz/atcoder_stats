@@ -6,6 +6,6 @@ out/*.csv
 out/*.log
 out/*.json
 out/updated.yaml
-.venv/
+.vscode/
 src/old/**
 *cache*
