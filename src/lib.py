@@ -1,11 +1,15 @@
-# 生情報ダウンロード〜保管
-# 保管した情報の読み出し用ユーティリティ
+# AtCoderDB: 生情報ダウンロード〜保管し、情報の読み出しユーティリティを提供する（シングルトン）
+# Users: ユーザー単位で分析するための基本クラス（継承して使う）
+#
+# かならず、submissions.csv.gz を手作業でin/フォルダに仕込むこと（圧縮したまま）
+# （1GB程度のファイルであり、安全性を確保するため自動化しない）
+# ↑ が理解できることが、本スクリプトを使う上での最低条件です笑
 
 import os
-import sys
 import copy
 import glob
 import time
+from abc import ABC, abstractmethod
 import yaml
 import logging
 import logging.config
@@ -16,21 +20,11 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
-DEBUG = True
-DEBUG_LOAD_SUBMITS = 500_000
-INF = 10 ** 16
-PARAM_KEY_EPOCH = 'epoch_second'
-PARAM_KEY_EPOCH_RATED = 'epoch_second_rated'
-PARAM_KEY_RECORDS = 'records'
-
-def eprint(*arg, **karg):
-    print(*arg, **karg, flush=True, file=sys.stderr)
-
 # データベース管理クラス（シングルトン）
 # 遅延loading, fetch（fetchした結果を in/にキャッシュ）, 依存関係自動最適化、ログ出力
 
 class AtCoderDB:
-    CONFIG_FILENAME = '../out/config.yaml'
+    CONFIG_FILENAME = 'config.yaml'
 
     # 初期設定
 
@@ -42,7 +36,6 @@ class AtCoderDB:
     def __init__(self, force_update=False):
         self.load_config_and_updated(force_update)
         logging.config.dictConfig(self.config['logging'])
-        self.logger = logging.getLogger(__name__)
         # 初期のDataFrameをセット {key: 空のDataFrame}
         self.__df = {}
         self.__df_saved = {}
@@ -68,7 +61,7 @@ class AtCoderDB:
         updated_filename = self.config['updated']['filename']
         with open(updated_filename, 'w') as f:
             yaml.safe_dump(self.updated, f, default_flow_style=False)
-        self.logger.info(f'Saved {updated_filename}')
+        logging.info(f'Saved {updated_filename}')
 
     # データへの基本アクセス
 
@@ -120,13 +113,13 @@ class AtCoderDB:
             # ログ表示を短縮するため、リストの場合は要素数だけにする
             x = self_ if not isinstance(self_, list) else f'list#{len(self_)}'
             y = other if not isinstance(other, list) else f'list#{len(other)}'
-            self.logger.warn(f'Found broken dependencies on {key} at type={type_} as self_={x}, op={op}, other={y}')
-            if op == 'set_ge': self.logger.warn(f'- diff: {set(other) - set(self_)}')
+            logging.warn(f'Found broken dependencies on {key} at type={type_} as self_={x}, op={op}, other={y}')
+            if op == 'set_ge': logging.warn(f'- diff: {set(other) - set(self_)}')
         return res
 
     def load_file(self, key, filename):
         if self.__df_saved[key] is None:
-            self.logger.info(f'Loading {key} form {filename}')
+            logging.info(f'Loading {key} form {filename}')
             self.__df_saved[key] = pd.read_csv(filename, index_col=0)
         return self.__df_saved[key]
 
@@ -138,13 +131,25 @@ class AtCoderDB:
         pre_cache = self.config['database'][key]['pre_processing']['fetch']['cache']
         pre_url = self.config['database'][key]['pre_processing']['fetch']['url']
         assert os.path.isfile(pre_cache), f'Download {pre_url} and set it to {pre_cache} manually.'
-        self.logger.info(f'Wait a minutes loading {key}_base_file from {pre_cache}')
+        logging.info(f'Wait a minutes loading {key}_base_file from {pre_cache}')
         start_time = time.time()
         self.__df[key] = pd.read_csv(pre_cache, index_col=0)
         duration = int(time.time() - start_time)
-        self.logger.info(f'Loaded {key}_base_file in {duration} seconds.')
+        logging.info(f'Loaded {key}_base_file in {duration} seconds.')
+        logging.info(f'Wait a minutes sorting {key}.')
+        start_time = time.time()
+        self.__df[key] = self.__df[key].sort_values('epoch_second')
+        duration = int(time.time() - start_time)
+        logging.info(f'Sorted {key} in {duration} seconds.')
         self.updated[key]['base_file_last_epoch_previous'] = self.updated[key]['base_file_last_epoch']
-        self.updated[key]['base_file_last_epoch'] = int(self.__df[key].tail(1)['epoch_second'].values[0])
+        last_epoch = int(self.__df[key].tail(1)['epoch_second'].values[0])
+        logging.info(f'Last epoch of base_file is {datetime.datetime.fromtimestamp(last_epoch)}')
+        if time.time() - last_epoch >= 864000:
+            logging.error('Base file is too old, restart this after getting new base file.')
+            exit()
+        if self.updated[key]['base_file_last_epoch_previous'] != last_epoch:
+            logging.info(f'Detected new base_file.')
+        self.updated[key]['base_file_last_epoch'] = last_epoch
         self.save_updated()
 
     # type_=1: 現在のout/をもとに追加をfetchしてout/を新規作成または上書きする
@@ -155,7 +160,7 @@ class AtCoderDB:
         # type_=2の処理をまずはやっておく
         if type_ == 2:
             assert key == 'submissions' or key == 'problem_models'
-            self.logger.info(f'Removing files for {key}')
+            logging.info(f'Removing files for {key}')
             if os.path.isfile(filename): os.remove(filename)
             if cache is not None:
                 for f in glob.glob(cache.replace('{}', '*')):
@@ -243,7 +248,7 @@ class AtCoderDB:
                         if 'fetch_epoch_second' in self.updated[key]:
                             self.updated[key]['fetch_epoch_second'] = time.time()
             except Exception as e:
-                eprint(e)
+                logging.error(e)
                 assert False
             time.sleep(1)
         return df
@@ -284,18 +289,18 @@ class AtCoderDB:
         if key == 'submissions':
             df = pd.read_json(text).set_index('id')
             if df['epoch_second'].nunique() <= 1:       # 時刻が一種類の場合は最新と判断して消す
-                self.logger.info('Clear this fetch because of epoch_second nunique <= 1')
+                logging.info('Clear this fetch because of epoch_second nunique <= 1')
                 return pd.DataFrame()
             count_under_judge = df['result'].str.match('.*\d.*').sum()
             if count_under_judge > 0:  # 結果に数字が含まれていたらジャッジ中と判断して消す
-                self.logger.info(f'Clear this fetch because of including {count_under_judge} submissions under judgement.')
+                logging.info(f'Clear this fetch because of including {count_under_judge} submissions under judgement.')
                 return pd.DataFrame()
             return df
         elif key == 'contests' and not post_processing:
             bs = BeautifulSoup(text, 'html.parser').find('tbody')
             df = pd.DataFrame()
             if bs is None:
-                self.logger.info(f'Get no contest.')
+                logging.info(f'Get no contest.')
                 return pd.DataFrame()
             while True:
                 bs = bs.find_next('tr')
@@ -360,7 +365,7 @@ class AtCoderDB:
         # ファイルをセーブ
         filename = self.config['database'][key]['filename']
         self.__df[key].iloc[pre_file_len:].to_csv(filename)
-        self.logger.info(f'Saved {key} to {filename}')
+        logging.info(f'Saved {key} to {filename}')
         # update状態を更新してセーブ
         if 'recently_rated_contest_ids' in self.updated[key]:
             assert key == 'contests'
@@ -377,33 +382,33 @@ class AtCoderDB:
     # 言語を変換集約する
     def transfer_languages_in_submissions(self):
         key = 'submissions'
-        self.logger.info(f'Transfer languages in {key}.')
+        logging.info(f'Transfer languages in {key}.')
         start_time = time.time()
         self.__df[key]['language'] = self.df(key)['language'].str.extract('^([A-Za-z\+\#]+)', expand=True)
         duration = int(time.time() - start_time)
-        self.logger.info(f'Done, transferred languages in {key} in {duration}sec.')
+        logging.info(f'Done, transferred languages in {key} in {duration}sec.')
 
     # ratedか/heuristicかどうかを表すフラグを追加する
     def add_rated_and_type(self, key):
         if 'rated' in self.df(key).index or 'type_' in self.df(key).index:
-            self.logger.info(f'Abort, already added rated and type in {key}.')
+            logging.info(f'Abort, already added rated and type in {key}.')
             return
-        self.logger.info(f'Adding rated and type in {key}.')
+        logging.info(f'Adding rated and type in {key}.')
         start_time = time.time()
         contests = self.df('contests')
         append = contests.loc[self.df(key)['contest_id'], ['rated', 'type_']]
         append.index = self.df(key).index
         self.__df[key] = pd.concat([self.df(key), append], axis=1)
         duration = int(time.time() - start_time)
-        self.logger.info(f'Done, added rated and type in {key} in {duration}sec.')
+        logging.info(f'Done, added rated and type in {key} in {duration}sec.')
 
     # diff/teeを追加する
     def add_diff_and_tee_in_submissions(self):
         key = 'submissions'
         if 'diff' in self.df(key).index or 'tee' in self.df(key).index:
-            self.logger.info(f'Abort, already added diff and tee in {key}.')
+            logging.info(f'Abort, already added diff and tee in {key}.')
             return
-        self.logger.info(f'Adding diff and tee in {key}.')
+        logging.info(f'Adding diff and tee in {key}.')
         start_time = time.time()
         problems_models = self.df('problem_models')[['diff', 'tee']]
         key_problem_id = pd.DataFrame(self.df(key)['problem_id'])
@@ -413,7 +418,7 @@ class AtCoderDB:
         append.index = self.df(key).index
         self.__df[key] = pd.concat([self.df(key), append], axis=1)
         duration = int(time.time() - start_time)
-        self.logger.info(f'Done, added diff and tee in {key} in {duration}sec.')
+        logging.info(f'Done, added diff and tee in {key} in {duration}sec.')
 
     # 汎用関数
 
@@ -442,10 +447,18 @@ class AtCoderDB:
             self.__df[key] = df
         return  df
 
-class Users:
+# Usersは仮想クラスなので、からなず継承して使ってください
+
+class Users(ABC):
     def __init__(self, df=None, filename=None):
         self.df = df
         self.filename = filename
+        if df is None and filename is not None and os.path.isfile(filename):
+            self.load()
+
+    @abstractmethod
+    def update(self):
+        pass
 
     # filter後に、user_idをキーにaggで集計したDataFrameを、Usersオブジェクトとして設定する
     # drop_duplicatesは、user_idごとのdrop_duplicates
@@ -476,13 +489,13 @@ class Users:
             col = grouped[fr_].agg(policy)
             col.name = to_
             res.append(col)
-        return Users(pd.concat(res, axis=1)) if len(res) > 0 else Users(df)
+        return cls(pd.concat(res, axis=1)) if len(res) > 0 else Users(df)
 
     # 'user_id' をキーに別のUserオブジェクトをマージ
     # others はリスト
     @classmethod
     def merge(cls, others):
-        return Users(pd.concat([other.df for other in others], axis=1))
+        return cls(pd.concat([other.df for other in others], axis=1))
 
     # 特定の列をキーに比率を追加する
     def add_rate(self, fr_, to_):
@@ -492,10 +505,12 @@ class Users:
         filename = self.filename if filename is None else filename
         assert filename is not None
         self.df.to_csv(filename)
+        logging.info(f'Saved {self.__class__} to {filename}')
 
     def load(self, filename=None):
         filename = self.filename if filename is None else filename
         assert filename is not None
+        logging.info(f'Loading {self.__class__} from {filename}')
         self.df = pd.read_csv(filename, index_col=0)
 
 # 使わないAPI
