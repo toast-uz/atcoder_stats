@@ -3,11 +3,12 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from users_ex import *
+from users import *
 
+# 2023/4/8 Twitter投稿グラフ
 class RateShojinCharts:
     def __init__(self):
-        df = UserBaseProfiles.merge([UserBaseProfiles(), UserShojins()]).df
+        df = Users.merge([UsersProfile(), UsersShojin()]).df
         df.loc[(df['country'] != 'JP')*(df['country'] != 'CN'), 'country'] = 'Rest of the World'
         p = sns.scatterplot(x='accepted', y='a_rate', hue='country', data=df, s=3)
         p.set_title('Accepted and Algorithm rate')

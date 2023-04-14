@@ -9,7 +9,6 @@ import os
 import copy
 import glob
 import time
-from abc import ABC, abstractmethod
 import yaml
 import logging
 import logging.config
@@ -19,6 +18,19 @@ import numpy as np
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+
+# 簡易的な実行時間計測のためのデコレータ定義
+# @logging_time として利用する
+def logging_time(func):
+    def inner_func(*args, **kwargs):
+        cls = f'{args[0]}'.split()[0].split('.')[1]
+        logging.info(f'Computing {cls}.{func.__name__}{args[1:]} ...')
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        duration = int(time.time() - start_time)
+        logging.info(f'Computed {cls}.{func.__name__}{args[1:]} in {duration}sec.')
+        return result
+    return inner_func
 
 # データベース管理クラス（シングルトン）
 # 遅延loading, fetch（fetchした結果を in/にキャッシュ）, 依存関係自動最適化、ログ出力
@@ -289,11 +301,11 @@ class AtCoderDB:
         if key == 'submissions':
             df = pd.read_json(text).set_index('id')
             if df['epoch_second'].nunique() <= 1:       # 時刻が一種類の場合は最新と判断して消す
-                logging.info('Clear this fetch because of epoch_second nunique <= 1')
+                logging.info('Reject this fetch because of epoch_second nunique <= 1')
                 return pd.DataFrame()
             count_under_judge = df['result'].str.match('.*\d.*').sum()
             if count_under_judge > 0:  # 結果に数字が含まれていたらジャッジ中と判断して消す
-                logging.info(f'Clear this fetch because of including {count_under_judge} submissions under judgement.')
+                logging.info(f'Reject this fetch because of including {count_under_judge} submissions under judgement.')
                 return pd.DataFrame()
             return df
         elif key == 'contests' and not post_processing:
@@ -380,6 +392,7 @@ class AtCoderDB:
     # 変換
 
     # 言語を変換集約する
+    @logging_time
     def transfer_languages_in_submissions(self):
         key = 'submissions'
         logging.info(f'Transfer languages in {key}.')
@@ -389,27 +402,23 @@ class AtCoderDB:
         logging.info(f'Done, transferred languages in {key} in {duration}sec.')
 
     # ratedか/heuristicかどうかを表すフラグを追加する
+    @logging_time
     def add_rated_and_type(self, key):
         if 'rated' in self.df(key).index or 'type_' in self.df(key).index:
             logging.info(f'Abort, already added rated and type in {key}.')
             return
-        logging.info(f'Adding rated and type in {key}.')
-        start_time = time.time()
         contests = self.df('contests')
         append = contests.loc[self.df(key)['contest_id'], ['rated', 'type_']]
         append.index = self.df(key).index
         self.__df[key] = pd.concat([self.df(key), append], axis=1)
-        duration = int(time.time() - start_time)
-        logging.info(f'Done, added rated and type in {key} in {duration}sec.')
 
     # diff/teeを追加する
+    @logging_time
     def add_diff_and_tee_in_submissions(self):
         key = 'submissions'
         if 'diff' in self.df(key).index or 'tee' in self.df(key).index:
             logging.info(f'Abort, already added diff and tee in {key}.')
             return
-        logging.info(f'Adding diff and tee in {key}.')
-        start_time = time.time()
         problems_models = self.df('problem_models')[['diff', 'tee']]
         key_problem_id = pd.DataFrame(self.df(key)['problem_id'])
         problems_models = pd.concat([problems_models.reset_index(), key_problem_id.drop_duplicates()]
@@ -417,8 +426,6 @@ class AtCoderDB:
         append = problems_models.loc[key_problem_id['problem_id'], ['diff', 'tee']]
         append.index = self.df(key).index
         self.__df[key] = pd.concat([self.df(key), append], axis=1)
-        duration = int(time.time() - start_time)
-        logging.info(f'Done, added diff and tee in {key} in {duration}sec.')
 
     # 汎用関数
 
@@ -426,7 +433,8 @@ class AtCoderDB:
     # - リストを指定したら要素のorで抽出
     # - rangeを指定したら範囲クエリー
     # 例 filter(key, column1=x, column2=[y, z], column3=range(s, t))
-    def filter(self, key, inplace=False, **karg):
+    @logging_time
+    def filter(self, key, **karg):
         df = self.df(key)
         for column, value in karg.items():
             if column in self.df(key).columns:
@@ -436,82 +444,14 @@ class AtCoderDB:
                     df = df[df[column].isin(value)]
                 else:
                     df = df[df[column] == value]
-        if inplace:
-            self.__df[key] = df
-        return  df
+        self.__df[key] = df
+        return self
 
     # DataFrameの重複排除
-    def drop_duplicates(self, key, arg, inplace=False):
-        df = self.df(key).drop_duplicates(arg)
-        if inplace:
-            self.__df[key] = df
-        return  df
-
-# Usersは仮想クラスなので、からなず継承して使ってください
-
-class Users(ABC):
-    def __init__(self, df=None, filename=None):
-        self.df = df
-        self.filename = filename
-        if df is None and filename is not None and os.path.isfile(filename):
-            self.load()
-
-    @abstractmethod
-    def update(self):
-        pass
-
-    # filter後に、user_idをキーにaggで集計したDataFrameを、Usersオブジェクトとして設定する
-    # drop_duplicatesは、user_idごとのdrop_duplicates
-    # sizeは、user_idごとのsize
-    # aggは、{column名: 集計ポリシー} または {元column名: (集計ポリシー, 先column名)} 形式の辞書
-    #   集計ポリシーは、max, min, sum, head, tail, np.argmax などをサポート
-    @classmethod
-    def from_db(cls, db, key, filter=None, drop_duplicates=None, size=None, agg={}):
-        # DataFrameの読み込み
-        if filter is None:
-            df = db.df(key)
-        else:
-            df = db.filter(key, **filter)
-        res = []
-        if drop_duplicates is not None:
-            df = df.drop_duplicates(['user_id', *drop_duplicates])
-
-        grouped = df.groupby('user_id')
-        if size is not None:
-            size_col = grouped.size()
-            size_col.name = size
-            res.append(size_col)
-        for fr_, policy in agg.items():
-            if isinstance(policy, tuple):
-                policy, to_ = policy
-            else:
-                to_ = fr_
-            col = grouped[fr_].agg(policy)
-            col.name = to_
-            res.append(col)
-        return cls(pd.concat(res, axis=1)) if len(res) > 0 else Users(df)
-
-    # 'user_id' をキーに別のUserオブジェクトをマージ
-    # others はリスト
-    @classmethod
-    def merge(cls, others):
-        return cls(pd.concat([other.df for other in others], axis=1))
-
-    # 特定の列をキーに比率を追加する
-    def add_rate(self, fr_, to_):
-        self.df[to_] = self.df[fr_] / self.df[fr_].sum()
-
-    def save(self, filename=None):
-        filename = self.filename if filename is None else filename
-        assert filename is not None
-        self.df.to_csv(filename)
-        logging.info(f'Saved {self.__class__} to {filename}')
-
-    def load(self, filename=None):
-        filename = self.filename if filename is None else filename
-        assert filename is not None
-        logging.info(f'Loading {self.__class__} from {filename}')
-        self.df = pd.read_csv(filename, index_col=0)
+    @logging_time
+    def drop_duplicates(self, key, arg):
+        self.__df[key] = self.df(key).drop_duplicates(arg)
+        return self
 
 # 使わないAPI
 # https://atcoder.jp/users/ユーザ名/history/json
