@@ -34,7 +34,7 @@ class Users:
         if fleq == fleq_org: return self.__class__(df)
         match fleq_org:
             case 'epoch':
-                datetime = pd.to_datetime(sdf['datetime'], unit='s', utc=True).dt.tz_convert('Asia/Tokyo')
+                datetime = pd.to_datetime(df['datetime'], unit='s', utc=True).dt.tz_convert('Asia/Tokyo')
                 year, month, day = datetime.dt.year, datetime.dt.month, datetime.dt.day
             case 'Y':
                 year, month, day = df['datetime'], 1, 1
@@ -79,7 +79,7 @@ class Users:
         df = self.df.reset_index()
         if subset is None:
             subset = []
-        if 'datetime' in self.columns and self._type_datetime() != 'epoch':
+        if 'datetime' in self.df.columns and self._type_datetime(self.df) != 'epoch':
             subset.insert(0, 'datetime')
         subset.insert(0, 'user_id')
         df = df.drop_duplicates(subset).set_index('user_id')
@@ -199,7 +199,7 @@ class UsersShojin(Users):
         db.filter('submissions', result='AC')
         db.drop_duplicates('submissions', ['user_id', 'problem_id'])
         db.add_diff_and_tee_in_submissions()
-        accepted = Users.from_db(db, 'submissions').agg({'tee': ('size', 'accepted')})
+        accepted = Users.from_db(db, 'submissions').agg({'result': ('size', 'accepted')})
         tee_diff = Users.from_db(db, 'submissions').agg({'tee': 'sum', 'diff': 'sum'})
         # rpsは本家では「rated かつ 問題が2問以上のコンテスト」のpoint総計
         # ここではより正確に「rated かつ アルゴ」でフィルタしている

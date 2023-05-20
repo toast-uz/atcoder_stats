@@ -1,3 +1,4 @@
+ahcstats/**
 in/results/*.json
 in/submissions/*.json
 in/*.json
