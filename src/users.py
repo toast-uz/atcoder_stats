@@ -89,7 +89,7 @@ class Users:
             return self.__class__(df)
 
     # param={column: value} または param={column: (value, op)}
-    # opは、'==' と '!=' を許容
+    # opは、'==', '!=', '<', '<=', '>', '>=', 'isin' を許容
     @logging_time
     def filter(self, params, inplace=False):
         df = self.df
@@ -108,6 +108,8 @@ class Users:
                     df = df[df[column] > value]
                 case '>=':
                     df = df[df[column] >= value]
+                case 'isin':
+                    df = df[df[column].isin(value)]
                 case _:
                     assert False
         if inplace:
@@ -140,9 +142,26 @@ class Users:
         return cls(pd.concat([other.df for other in others], axis=1))
 
     # 特定の列をキーに比率を追加する
-    def add_rate(self, column, rate_column, inplace=False):
+    def add_ratio(self, column, ratio_column, inplace=False):
         df = self.df
-        df[rate_column] = df[column] / df[column].sum()
+        df[ratio_column] = df[column] / df[column].sum()
+        if inplace:
+            self.df = df
+        else:
+            return self.__class__(df)
+
+    # 特定の列をキーにAtCoder色を追加する
+    def add_color(self, column, color_column, inplace=False):
+        df = self.df
+        df[color_column] = 'black'
+        df.loc[(df[column] >= 0) * (df[column] < 400), color_column] = 'gray'
+        df.loc[(df[column] >= 400) * (df[column] < 800), color_column] = 'brown'
+        df.loc[(df[column] >= 800) * (df[column] < 1200), color_column] = 'green'
+        df.loc[(df[column] >= 1200) * (df[column] < 1600), color_column] = 'lightblue'
+        df.loc[(df[column] >= 1600) * (df[column] < 2000), color_column] = 'blue'
+        df.loc[(df[column] >= 2000) * (df[column] < 2400), color_column] = 'yellow'
+        df.loc[(df[column] >= 2400) * (df[column] < 2800), color_column] = 'orange'
+        df.loc[df[column] >= 2800, color_column] = 'red'
         if inplace:
             self.df = df
         else:
@@ -184,7 +203,8 @@ class UsersProfile(Users):
         a_rate = Users.from_db(db, 'results').filter({'type_': 'Algorithm'}).agg({'new_rate': ('last', 'a_rate')})
         h_rate = Users.from_db(db, 'results').filter({'type_': 'Heuristic'}).agg({'new_rate': ('last', 'h_rate')})
         self.df = Users.merge([users, a_rate, h_rate]).df
-        self.df[['a_rate', 'h_rate']] = self.df[['a_rate', 'h_rate']].fillna(0).astype(int)
+        #self.add_color('a_rate','a_color', inplace=True)
+        #self.add_color('h_rate','h_color', inplace=True)
 
 # 精進情報 accepted, rps, tee と累積diffを得る
 class UsersShojin(Users):
