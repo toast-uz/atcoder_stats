@@ -395,11 +395,7 @@ class AtCoderDB:
     @logging_time
     def transfer_languages_in_submissions(self):
         key = 'submissions'
-        logging.info(f'Transfer languages in {key}.')
-        start_time = time.time()
         self.__df[key]['language'] = self.df(key)['language'].str.extract('^([A-Za-z\+\#]+)', expand=True)
-        duration = int(time.time() - start_time)
-        logging.info(f'Done, transferred languages in {key} in {duration}sec.')
 
     # ratedか/heuristicかどうかを表すフラグを追加する
     @logging_time
@@ -444,6 +440,13 @@ class AtCoderDB:
                     df = df[df[column].isin(value)]
                 else:
                     df = df[df[column] == value]
+            elif self.df(key).index.name == column:
+                if isinstance(value, range):
+                    df = df[(df.index >= value[0]) * (df.index <= value[-1])]
+                elif isinstance(value, list):
+                    df = df[df.index.isin(value)]
+                else:
+                    df = df[df.index == value]
         self.__df[key] = df
         return self
 

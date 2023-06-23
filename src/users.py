@@ -199,7 +199,7 @@ class UsersProfile(Users):
         db.add_rated_and_type('results')
         users = Users.from_db(db, 'results')
         users = users.agg({'country': 'last', 'affiliation': 'last'})
-        db.filter('results', rated=1, inplace=True)
+        db.filter('results', rated=1)
         a_rate = Users.from_db(db, 'results').filter({'type_': 'Algorithm'}).agg({'new_rate': ('last', 'a_rate')})
         h_rate = Users.from_db(db, 'results').filter({'type_': 'Heuristic'}).agg({'new_rate': ('last', 'h_rate')})
         self.df = Users.merge([users, a_rate, h_rate]).df
@@ -265,7 +265,7 @@ class UsersShojinExHistory(Users):
         start_time = time.time()
         db = AtCoderDB()
         db.add_rated_and_type('submissions')
-        db.filter('submissions', result='AC', type_='Algorithm', inplace=True)
+        db.filter('submissions', result='AC', type_='Algorithm')
         db.add_diff_and_tee_in_submissions()
         self.df = self.__class__.from_db(db, 'submissions', time_columns=('epoch_second', 'time'),
             resolution='month',
