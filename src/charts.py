@@ -1,4 +1,8 @@
 # 各種チャート
+# Pythonコマンドメニューにおいて
+#  from charts import *
+#  関数名
+# で実行できる
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -75,7 +79,7 @@ def chatts_typical_tessoku_alsu():
 # コンテストのリアルタイム提出のみ
 # レートはコンテスト開始時点
 # 2023/6/23 Twitter投稿グラフ
-def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'PyPy']):
+def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'PyPy'], compare=['AC', 'TLE']):
     db = AtCoderDB()
     db.filter('contests', contest_id=contest_id)
     fr, to = map(int, db.df('contests')[['start_epoch_second', 'end_epoch_second']].to_numpy().tolist()[0])
@@ -86,7 +90,7 @@ def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'PyPy']):
     db.filter('results', contest_id=contest_id)
     results = db.df('results')
     data = pd.merge(submits, results, on='user_id')
-    data = data[data['result'].isin(['AC', 'TLE'])]
+    data = data[data['result'].isin(compare)]
     data['problem_id'] = data['problem_id'].str.split('_').apply(lambda x: x[-1].upper())
     data = data.sort_values(['problem_id', 'result']).reset_index(drop=True)
     p = sns.violinplot(data=data, x='problem_id', y='old_rate', scale='count', hue='result', split=True)
