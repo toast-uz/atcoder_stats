@@ -96,11 +96,11 @@ def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'PyPy'], compare=['AC'
     p = sns.violinplot(data=data, x='problem_id', y='old_rate', scale='count', hue='result', split=True)
     sns.move_legend(p, "lower right")
     p.set_ylabel('Each user rate before the contest')
-    p.set_title(f'AC vs TLE submissions at {contest_id} (All languages)')
+    p.set_title(f'{compare[0]} vs {compare[1]} submissions at {contest_id} (All languages)')
     plt.show()
     for language in languages:
         p = sns.violinplot(data=data[data['language'] == language], x='problem_id', y='old_rate', scale='count', hue='result', split=True)
         sns.move_legend(p, "lower right")
         p.set_ylabel('Each user rate before the contest')
-        p.set_title(f'AC vs TLE submissions at {contest_id} ({language})')
+        p.set_title(f'{compare[0]} vs {compare[1]} submissions at {contest_id} ({language})')
         plt.show()
