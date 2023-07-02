@@ -104,3 +104,22 @@ def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'PyPy'], compare=['AC'
         p.set_ylabel('Each user rate before the contest')
         p.set_title(f'{compare[0]} vs {compare[1]} submissions at {contest_id} ({language})')
         plt.show()
+
+# AtCoderの特定時間帯でのリクエスト推移
+# 2023/6/25 Twitter投稿グラフ
+def charts_submissions_trend(contest_id, margin=300, resolution=60):
+    db = AtCoderDB()
+    db.filter('contests', contest_id=contest_id)
+    fr, to = map(int, db.df('contests')[['start_epoch_second', 'end_epoch_second']].to_numpy().tolist()[0])
+    # コンテスト実行中のみに限定（終了時刻0秒は採用されない: AtCoderの動作で確認）
+    db.filter('submissions', epoch_second=range(fr - margin, to + margin))
+    data = db.df('submissions')
+    data['problem_id'][data['contest_id'] != contest_id] = 'other_contests'
+    hue_order = sorted(data['problem_id'].unique().tolist())
+    data['datetime'] = pd.to_datetime(data['epoch_second'], unit='s', utc=True).dt.tz_convert('Asia/Tokyo')
+    p = sns.histplot(data=data, x='datetime', hue='problem_id', hue_order=hue_order,
+        multiple='stack', bins=(to - fr + margin * 2) // resolution)
+    p.set_ylabel(f'submissions / {resolution} sec')
+    p.set_title(f'Submissions\' trend at the time of {contest_id}')
+    plt.show()
+

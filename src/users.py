@@ -277,12 +277,12 @@ class UsersShojinExHistory(Users):
 
 # 定義されているクラスの情報を一斉にアップデートする
 def main():
-    profile = UsersProfile()
-    profile.update()
-    profile.save()
     shojin = UsersShojin()
     shojin.update()
     shojin.save()
+    profile = UsersProfile()
+    profile.update()
+    profile.save()
     a_rate_hist = UsersARateHistory()
     a_rate_hist.update()
     a_rate_hist.save()
