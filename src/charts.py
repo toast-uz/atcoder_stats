@@ -107,11 +107,13 @@ def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'PyPy'], compare=['AC'
 
 # AtCoderの特定時間帯でのリクエスト推移
 # 2023/6/25 Twitter投稿グラフ
-def charts_submissions_trend(contest_id, margin=300, resolution=60):
+def charts_submissions_trend(contest_id, margin=300, resolution=60, heuristics=False):
     db = AtCoderDB()
     db.filter('contests', contest_id=contest_id)
     fr, to = map(int, db.df('contests')[['start_epoch_second', 'end_epoch_second']].to_numpy().tolist()[0])
     # コンテスト実行中のみに限定（終了時刻0秒は採用されない: AtCoderの動作で確認）
+    if heuristics:
+        db.filter('submissions', problem_id=contest_id + '_a')
     db.filter('submissions', epoch_second=range(fr - margin, to + margin))
     data = db.df('submissions')
     data['problem_id'][data['contest_id'] != contest_id] = 'other_contests'
