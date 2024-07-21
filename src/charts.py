@@ -1,4 +1,7 @@
 # 各種チャート
+# あらかじめコマンドラインで python users.py を実行しておくこと
+# KeyError: コンテスト名リストが出たら in/contsts.json を削除して再実行すること
+#
 # Pythonコマンドメニューにおいて
 #  from charts import *
 #  関数名
@@ -79,7 +82,7 @@ def chatts_typical_tessoku_alsu():
 # コンテストのリアルタイム提出のみ
 # レートはコンテスト開始時点
 # 2023/6/23 Twitter投稿グラフ
-def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'PyPy'], compare=['AC', 'TLE']):
+def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'Rust'], compare=['AC', 'TLE']):
     db = AtCoderDB()
     db.filter('contests', contest_id=contest_id)
     fr, to = map(int, db.df('contests')[['start_epoch_second', 'end_epoch_second']].to_numpy().tolist()[0])

@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from io import StringIO
 
 # 簡易的な実行時間計測のためのデコレータ定義
 # @logging_time として利用する
@@ -147,19 +148,21 @@ class AtCoderDB:
         pre_cache = self.config['database'][key]['pre_processing']['fetch']['cache']
         pre_url = self.config['database'][key]['pre_processing']['fetch']['url']
         assert os.path.isfile(pre_cache), f'Download {pre_url} and set it to {pre_cache} manually.'
-        logging.info(f'Wait a minutes loading {key}_base_file from {pre_cache}')
         start_time = time.time()
-        self.__df[key] = pd.read_csv(pre_cache, index_col=0)
-        duration = int(time.time() - start_time)
-        logging.info(f'Loaded {key}_base_file in {duration} seconds.')
-        logging.info(f'Wait a minutes sorting {key}.')
-        start_time = time.time()
-        self.__df[key] = self.__df[key].sort_values('epoch_second')
-        duration = int(time.time() - start_time)
-        logging.info(f'Sorted {key} in {duration} seconds.')
-        self.updated[key]['base_file_last_epoch_previous'] = self.updated[key]['base_file_last_epoch']
-        last_epoch = int(self.__df[key].tail(1)['epoch_second'].values[0])
-        logging.info(f'Last epoch of base_file is {datetime.datetime.fromtimestamp(last_epoch)}')
+        last_epoch = os.path.getatime(pre_cache)
+        if time.time() - last_epoch < 864000:
+            logging.info(f'Wait a minutes loading {key}_base_file from {pre_cache}')
+            self.__df[key] = pd.read_csv(pre_cache, index_col=0)
+            duration = int(time.time() - start_time)
+            logging.info(f'Loaded {key}_base_file in {duration} seconds.')
+            start_time = time.time()
+            logging.info(f'Wait a minutes sorting {key}.')
+            self.__df[key] = self.__df[key].sort_values('epoch_second')
+            duration = int(time.time() - start_time)
+            logging.info(f'Sorted {key} in {duration} seconds.')
+            self.updated[key]['base_file_last_epoch_previous'] = self.updated[key]['base_file_last_epoch']
+            last_epoch = int(self.__df[key].tail(1)['epoch_second'].values[0])
+            logging.info(f'Last epoch of base_file is {datetime.datetime.fromtimestamp(last_epoch)}')
         if time.time() - last_epoch >= 864000:
             logging.error('Base file is too old, restart this after getting new base file.')
             exit()
@@ -216,6 +219,7 @@ class AtCoderDB:
             item = self.config['database'][key]['post_processing']
             if key == 'submissions':
                 recently_contest_ids = pd.concat(df_list)['contest_id'].drop_duplicates().to_list()
+                recently_contest_ids = [i for i in recently_contest_ids if 'adt_' not in i]
                 self.updated[key]['recently_contest_ids'] = recently_contest_ids
             elif key == 'contests':
                 df = self.get_cached_url(key, cache=item['fetch']['cache'], url=item['fetch']['url'],
@@ -303,7 +307,7 @@ class AtCoderDB:
     # 得られたテキストをパースしてDataFrameにする
     def parse(self, key, text, post_processing=False):
         if key == 'submissions':
-            df = pd.read_json(text).set_index('id')
+            df = pd.read_json(StringIO(text)).set_index('id')
             if df['epoch_second'].nunique() <= 1:       # 時刻が一種類の場合は最新と判断して消す
                 logging.info('Reject this fetch because of epoch_second nunique <= 1')
                 return pd.DataFrame()
@@ -336,7 +340,7 @@ class AtCoderDB:
                 df = pd.concat([df, df_add])
             return df
         elif key == 'contests' and post_processing:
-            df = pd.read_json(text).rename(columns={'id': 'contest_id', 'rate_change': 'rated'})
+            df = pd.read_json(StringIO(text)).rename(columns={'id': 'contest_id', 'rate_change': 'rated'})
             df['rated'] = (df['rated'] != '-').astype(int)
             df['type_'] = 'Algorithm'
             df.insert(2, 'end_epoch_second', df['start_epoch_second'] + df['duration_second'])
@@ -345,7 +349,7 @@ class AtCoderDB:
             if text == '[]':
                 logging.warn('Have\'t prepared results. Maybe before computing final results.')
                 return pd.DataFrame()
-            df = pd.read_json(text)[['ContestScreenName', 'EndTime', 'UserScreenName', 'Country', 'Affiliation',
+            df = pd.read_json(StringIO(text))[['ContestScreenName', 'EndTime', 'UserScreenName', 'Country', 'Affiliation',
                 'Place', 'OldRating', 'NewRating', 'Performance', 'IsRated']]
             df.columns = ['contest_id', 'end_epoch_second', 'user_id', 'country', 'affiliation',
                 'place', 'old_rate', 'new_rate', 'perf', 'user_rated']
@@ -356,7 +360,7 @@ class AtCoderDB:
             df.loc[df['user_rated'] == 0, 'perf'] = 0    # ratedでなければperf=0に（上と２段階に分けるのが速い）
             return df
         elif key == 'problem_models':
-            df_raw = pd.read_json(text).T
+            df_raw = pd.read_json(StringIO(text)).T
             df_raw.index.name = 'problem_id'
             df_raw['contest_id'] = df_raw.index.map(lambda s: '_'.join(s.split('_')[:-1]))
             diff = df_raw['difficulty'].agg(self.adjust_diff)
@@ -396,10 +400,12 @@ class AtCoderDB:
     # 変換
 
     # 言語を変換集約する
+    # 2023言語updateでPyPy/Pythonの区別が無くなったため、PyPyをPythonに変換する
     @logging_time
     def transfer_languages_in_submissions(self):
         key = 'submissions'
-        self.__df[key]['language'] = self.df(key)['language'].str.extract('^([A-Za-z\+\#]+)', expand=True)
+        self.__df[key]['language'] = self.df(key)['language']\
+            .str.extract('^([A-Za-z\+\#]+)', expand=True).replace('PyPy', 'Python')
 
     # ratedか/heuristicかどうかを表すフラグを追加する
     @logging_time
