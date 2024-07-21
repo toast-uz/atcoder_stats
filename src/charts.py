@@ -96,13 +96,13 @@ def charts_AC_TLE(contest_id, languages=['C++', 'Python', 'Rust'], compare=['AC'
     data = data[data['result'].isin(compare)]
     data['problem_id'] = data['problem_id'].str.split('_').apply(lambda x: x[-1].upper())
     data = data.sort_values(['problem_id', 'result']).reset_index(drop=True)
-    p = sns.violinplot(data=data, x='problem_id', y='old_rate', scale='count', hue='result', split=True)
+    p = sns.violinplot(data=data, x='problem_id', y='old_rate', scale='count', hue='result', split=True, inner=None)
     sns.move_legend(p, "lower right")
     p.set_ylabel('Each user rate before the contest')
     p.set_title(f'{compare[0]} vs {compare[1]} submissions at {contest_id} (All languages)')
     plt.show()
     for language in languages:
-        p = sns.violinplot(data=data[data['language'] == language], x='problem_id', y='old_rate', scale='count', hue='result', split=True)
+        p = sns.violinplot(data=data[data['language'] == language], x='problem_id', y='old_rate', scale='count', hue='result', split=True, inner=None)
         sns.move_legend(p, "lower right")
         p.set_ylabel('Each user rate before the contest')
         p.set_title(f'{compare[0]} vs {compare[1]} submissions at {contest_id} ({language})')
