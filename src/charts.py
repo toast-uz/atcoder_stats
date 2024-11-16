@@ -128,3 +128,28 @@ def charts_submissions_trend(contest_id, margin=300, resolution=60, heuristics=F
     p.set_title(f'Submissions\' trend at the time of {contest_id}')
     plt.show()
 
+# ChaptGPTの影響を見える化する
+# 2024/11/16 Twitter投稿グラフ
+# warmingup: ユーザー自身の成長影響を除くために、以前の期間の最小rated数を指定
+# after: チャットGPTが導入された後の成績、最小rated数
+# before: チャットGPTが導入される前の成績、最小rated数
+def chart_chatgpt_impact(warmingup=('abc001', 'abc344', 30), before=('abc345', 'abc353', 3), after=('abc371', 'abc379', 3)):
+    a_rate_hist = UsersARateHistory()
+    candidate_warmingup = a_rate_hist.filter({'contest_id': (warmingup[0], '>=')}).filter({'contest_id': (warmingup[1], '<=')}).agg({'perf': ('count', 'rated')}).filter({'rated': (warmingup[2], '>=')})
+    a_rate_hist_before = a_rate_hist.filter({'contest_id': (before[0], '>=')}).filter({'contest_id': (before[1], '<=')})
+    a_rate_hist_after = a_rate_hist.filter({'contest_id': (after[0], '>=')}).filter({'contest_id': (after[1], '<=')})
+    candidate_before = a_rate_hist_before.agg({'perf': ('count', 'rated')}).filter({'rated': (before[2], '>=')})
+    candidate_after = a_rate_hist_after.agg({'perf': ('count', 'rated')}).filter({'rated': (after[2], '>=')})
+    candidate = sorted(set(candidate_warmingup.df.index) & set(candidate_before.df.index) & set(candidate_after.df.index))
+    a_rate_mean_before = a_rate_hist_before.agg({'perf': ('mean', 'before')})
+    a_rate_mean_after = a_rate_hist_after.agg({'perf': ('mean', 'after')})
+    a_rate_mean = Users.merge([a_rate_mean_before, a_rate_mean_after])
+    data = a_rate_mean.df.loc[candidate]
+    data['impact'] = data['after'] - data['before']
+    print(data.describe())
+    #print(data[(data['before'] < 1200)*(data['before'] >= 800)].describe())
+    p = sns.scatterplot(data=data, x='before', y='after', hue='impact', palette='coolwarm', s=10)
+    p.set_title(f'Impact of ChatGPT N={len(data)}, #warmingup(-{warmingup[1]})>={warmingup[2]}')
+    p.set_xlabel(f'Mean perf before 4o ({before[0]}-{before[1]}, #rated>={before[2]})')
+    p.set_ylabel(f'Mean perf after o1 ({after[0]}-{after[1]}, #rated>={after[2]})')
+    plt.show()
