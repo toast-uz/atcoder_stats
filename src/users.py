@@ -170,7 +170,7 @@ class Users:
     def save(self, filename=None):
         filename = self.filename if filename is None else filename
         assert filename is not None
-        self.df.to_csv(filename)
+        self.df.to_csv(filename, compression='gzip')
         logging.info(f'Saved {self.__class__} to {filename}')
 
     def load(self, filename=None):
@@ -191,7 +191,7 @@ class Users:
 # user基本情報 country affiliation algo/heuristicsの最新レート を得る
 class UsersProfile(Users):
     def __init__(self, df=None):
-        super().__init__(df, filename='../out/users/profile.csv')
+        super().__init__(df, filename='../out/users/profile.csv.gz')
 
     @logging_time
     def update(self):
@@ -209,7 +209,7 @@ class UsersProfile(Users):
 # 精進情報 accepted, rps, tee と累積diffを得る
 class UsersShojin(Users):
     def __init__(self, df=None):
-        super().__init__(df, filename='../out/users/shojin.csv')
+        super().__init__(df, filename='../out/users/shojin.csv.gz')
 
     @logging_time
     def update(self):
@@ -231,7 +231,7 @@ class UsersShojin(Users):
 # ユーザ単位での、Algoのrate更新履歴
 class UsersARateHistory(Users):
     def __init__(self, df=None):
-        super().__init__(df, filename='../out/users/a_rate_hist.csv')
+        super().__init__(df, filename='../out/users/a_rate_hist.csv.gz')
 
     @logging_time
     def update(self):
@@ -243,7 +243,7 @@ class UsersARateHistory(Users):
 # ユーザ単位での、Heuristicのrate更新履歴
 class UsersHRateHistory(Users):
     def __init__(self, df=None):
-        super().__init__(df, filename='../out/users/h_rate_hist.csv')
+        super().__init__(df, filename='../out/users/h_rate_hist.csv.gz')
 
     @logging_time
     def update(self):
@@ -258,7 +258,7 @@ class UsersHRateHistory(Users):
 
 class UsersShojinExHistory(Users):
     def __init__(self, df=None):
-        super().__init__(df, filename='../out/users/shojin_ex.csv')
+        super().__init__(df, filename='../out/users/shojin_ex.csv.gz')
 
     def update(self):
         logging.info('Computing shojin_ex ...')
