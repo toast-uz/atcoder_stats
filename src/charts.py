@@ -16,14 +16,16 @@ from users import *
 # 2023/4/8 Twitter投稿グラフ
 def charts_rate_shojin():
     df = Users.merge([UsersProfile(), UsersShojin()]).df
-    df.loc[(df['country'] != 'JP')*(df['country'] != 'CN'), 'country'] = 'Rest of the World'
-    p = sns.scatterplot(x='accepted', y='a_rate', hue='country', data=df, s=3)
+    df.loc[(df['country'] != 'JP')*(df['country'] != 'CN')*(df['country'] != 'IN'), 'country'] = 'Rest of the World'
+    hue_order = ['JP', 'CN', 'IN', 'Rest of the World']
+    palette = ['blue', 'red', 'orange', 'gray']
+    p = sns.scatterplot(x='accepted', y='a_rate', hue='country', hue_order=hue_order, palette=palette, data=df, s=3)
     p.set_title('Accepted and Algorithm rate')
     plt.show()
-    p = sns.scatterplot(x='rps', y='a_rate', hue='country', data=df, s=3)
+    p = sns.scatterplot(x='rps', y='a_rate', hue='country', hue_order=hue_order, palette=palette, data=df, s=3)
     p.set_title('Rated point sum and Algorithm rate')
     plt.show()
-    p = sns.scatterplot(x='tee', y='a_rate', hue='country', data=df, s=3)
+    p = sns.scatterplot(x='tee', y='a_rate', hue='country', hue_order=hue_order, palette=palette, data=df, s=3)
     p.set_title('TEE and Algorithm rate')
     plt.show()
 
@@ -146,9 +148,11 @@ def chart_chatgpt_impact(warmingup=('abc001', 'abc344', 30), before=('abc345', '
     a_rate_mean = Users.merge([a_rate_mean_before, a_rate_mean_after])
     data = a_rate_mean.df.loc[candidate]
     data['impact'] = data['after'] - data['before']
+    data['impact_'] = 'plus'
+    data.loc[data['impact'] < 0, 'impact_'] = 'minus'
     print(data.describe())
     #print(data[(data['before'] < 1200)*(data['before'] >= 800)].describe())
-    p = sns.scatterplot(data=data, x='before', y='after', hue='impact', palette='coolwarm', s=10)
+    p = sns.scatterplot(data=data, x='before', y='after', hue='impact_', palette='coolwarm', s=10)
     p.set_title(f'Impact of ChatGPT N={len(data)}, #warmingup(-{warmingup[1]})>={warmingup[2]}')
     p.set_xlabel(f'Mean perf before 4o ({before[0]}-{before[1]}, #rated>={before[2]})')
     p.set_ylabel(f'Mean perf after o1 ({after[0]}-{after[1]}, #rated>={after[2]})')
