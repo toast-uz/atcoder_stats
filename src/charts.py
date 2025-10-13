@@ -157,3 +157,26 @@ def chart_chatgpt_impact(warmup=('abc001', 'abc344', 30), before=('abc345', 'abc
     p.set_xlabel(f'Mean perf before 4o ({before[0]}-{before[1]}, #rated>={before[2]})')
     p.set_ylabel(f'Mean perf after o1 ({after[0]}-{after[1]}, #rated>={after[2]})')
     plt.show()
+
+# ChaptGPTの影響を見える化する
+# 2025/10/13 X投稿グラフ
+def chart_chatgpt_impact_color(datetime=(202210, 202509), contest_id_startswith='abc', perf=None, place=(0, 100), normalize=True):
+    db = AtCoderDB()
+    users = Users.from_db(db, 'results').resample('M')
+    if datetime is not None and datetime[0] is not None: users.filter({'datetime': (datetime[0], '>=')}, inplace=True)
+    if datetime is not None and datetime[1] is not None: users.filter({'datetime': (datetime[1], '<=')}, inplace=True)
+    if perf is not None and perf[0] is not None: users.filter({'perf': (perf[0], '>=')}, inplace=True)
+    if perf is not None and perf[1] is not None: users.filter({'perf': (perf[1], '<=')}, inplace=True)
+    if place is not None and place[0] is not None: users.filter({'place': (place[0], '>=')}, inplace=True)
+    if place is not None and place[1] is not None: users.filter({'place': (place[1], '<=')}, inplace=True)
+    if contest_id_startswith is not None: users.filter({'contest_id': (contest_id_startswith, 'startswith')}, inplace=True)
+    users.add_color('old_rate', 'color', inplace=True)
+    colors = users.df.groupby('color')['old_rate'].max().sort_values().index.tolist()
+    df = users.df.groupby('datetime')['color'].value_counts(normalize=normalize).unstack()
+    df = df.reindex(columns=colors).fillna(0)
+    if not normalize: df = df.astype(int)
+    print(df)
+    ax = df.plot(kind='bar', color=colors, stacked=True, title=f'{contest_id_startswith} top {place[1]} colors ratio', legend=False)
+    ax.set_xlabel(None)
+    plt.tight_layout()
+    plt.show()

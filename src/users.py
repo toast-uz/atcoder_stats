@@ -110,6 +110,14 @@ class Users:
                     df = df[df[column] >= value]
                 case 'isin':
                     df = df[df[column].isin(value)]
+                case 'contains':
+                    df = df[df[column].str.contains(value)]
+                case 'endswith':
+                    df = df[df[column].str.endswith(value)]
+                case 'startswith':
+                    df = df[df[column].str.startswith(value)]
+                case 'match':
+                    df = df[df[column].str.match(value)]
                 case _:
                     assert False
         if inplace:
@@ -154,7 +162,7 @@ class Users:
     def add_color(self, column, color_column, inplace=False):
         df = self.df
         df[color_column] = 'black'
-        df.loc[(df[column] >= 0) * (df[column] < 400), color_column] = 'gray'
+        df.loc[(df[column] > 0) * (df[column] < 400), color_column] = 'gray'
         df.loc[(df[column] >= 400) * (df[column] < 800), color_column] = 'brown'
         df.loc[(df[column] >= 800) * (df[column] < 1200), color_column] = 'green'
         df.loc[(df[column] >= 1200) * (df[column] < 1600), color_column] = 'lightblue'

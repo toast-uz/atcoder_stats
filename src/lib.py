@@ -130,8 +130,8 @@ class AtCoderDB:
             # ログ表示を短縮するため、リストの場合は要素数だけにする
             x = self_ if not isinstance(self_, list) else f'list#{len(self_)}'
             y = other if not isinstance(other, list) else f'list#{len(other)}'
-            logging.warn(f'Found broken dependencies on {key} at type={type_} as self_={x}, op={op}, other={y}')
-            if op == 'set_ge': logging.warn(f'- diff: {set(other) - set(self_)}')
+            logging.warning(f'Found broken dependencies on {key} at type={type_} as self_={x}, op={op}, other={y}')
+            if op == 'set_ge': logging.warning(f'- diff: {set(other) - set(self_)}')
         return res
 
     def load_file(self, key, filename):
@@ -199,12 +199,15 @@ class AtCoderDB:
             if len(df) > 0: df_list.append(df)
         # 読み込んだ部分からの追加をフェッチする
         uniqueness = self.config['database'][key].get('uniqueness')
-        state = self.get_value_state(key, df_list)
+        state = self.get_init_state(key, df_list)
         while state is not None:
-            value, state = self.get_next_value(key, state)
+            value, state = self.get_next_value_state(key, state)
             df = self.get_cached_url(key, value)
             if len(df) == 0:
-                break
+                if key == 'submissions' or key == 'contests':    # dfが空なら検索を中断する
+                    break
+                else:   # dfが空なら次を検索する
+                    continue
             if uniqueness is not None and len(df_list) > 0:   # 重複処理
                 name = df.index.name
                 df_unique = pd.concat([df_list[-1], df]).reset_index().drop_duplicates(
@@ -273,7 +276,7 @@ class AtCoderDB:
             time.sleep(1)
         return df
 
-    def get_value_state(self, key, df_list):
+    def get_init_state(self, key, df_list):
         if key == 'submissions':
             return df_list
         elif key == 'contests':
@@ -290,7 +293,7 @@ class AtCoderDB:
         else:
             assert False
 
-    def get_next_value(self, key, state):
+    def get_next_value_state(self, key, state):
         if key == 'submissions':
             value = int(state[-1].tail(1)['epoch_second'].values[0])
             return value, state
@@ -311,7 +314,7 @@ class AtCoderDB:
             if df['epoch_second'].nunique() <= 1:       # 時刻が一種類の場合は最新と判断して消す
                 logging.info('Reject this fetch because of epoch_second nunique <= 1')
                 return pd.DataFrame()
-            count_under_judge = df['result'].str.match('.*\d.*').sum()
+            count_under_judge = df['result'].str.match(r'.*\d.*').sum()
             if count_under_judge > 0:  # 結果に数字が含まれていたらジャッジ中と判断して消す
                 logging.info(f'Reject this fetch because of including {count_under_judge} submissions under judgement.')
                 return pd.DataFrame()
@@ -347,7 +350,7 @@ class AtCoderDB:
             return df.set_index('contest_id')
         elif key == 'results':
             if text == '[]':
-                logging.warn('Have\'t prepared results. Maybe before computing final results.')
+                logging.warning('Have\'t prepared results. Maybe before computing final results.')
                 return pd.DataFrame()
             df = pd.read_json(StringIO(text))[['ContestScreenName', 'EndTime', 'UserScreenName', 'Country', 'Affiliation',
                 'Place', 'OldRating', 'NewRating', 'Performance', 'IsRated']]
@@ -363,9 +366,9 @@ class AtCoderDB:
             df_raw = pd.read_json(StringIO(text)).T
             df_raw.index.name = 'problem_id'
             df_raw['contest_id'] = df_raw.index.map(lambda s: '_'.join(s.split('_')[:-1]))
-            diff = df_raw['difficulty'].agg(self.adjust_diff)
+            diff = df_raw['difficulty'].transform(self.adjust_diff)
             diff.name = 'diff'
-            tee = (df_raw['slope'] * 4000 + df_raw['intercept']).agg(np.exp)
+            tee = (df_raw['slope'] * 4000 + df_raw['intercept']).transform(np.exp)
             tee.name = 'tee'
             # isProblemModelWithDifficultyModel の判断基準として、すべてのproblem_modelsフィールドが有効であること
             return pd.concat([df_raw['contest_id'], diff, tee], axis=1).dropna()
@@ -405,7 +408,7 @@ class AtCoderDB:
     def transfer_languages_in_submissions(self):
         key = 'submissions'
         self.__df[key]['language'] = self.df(key)['language']\
-            .str.extract('^([A-Za-z\+\#]+)', expand=True).replace('PyPy', 'Python')
+            .str.extract(r'^([A-Za-z\+\#]+)', expand=True).replace('PyPy', 'Python')
 
     # ratedか/heuristicかどうかを表すフラグを追加する
     @logging_time
